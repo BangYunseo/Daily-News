@@ -23,6 +23,7 @@ import datetime
 import feedparser
 import resend
 from google import genai
+from google.genai import types
 
 from feeds import CATEGORIES, ITEMS_PER_CATEGORY, TRENDING_FEED, TRENDING_ITEMS
 
@@ -121,6 +122,30 @@ def _unwrap_codeblock(text):
     return t.strip()
 
 
+# 구조화 출력(structured output) 스키마.
+# response_schema로 넘기면 모델이 이 형태의 '유효한 JSON'만 반환하도록 강제된다.
+# 프롬프트로 "JSON 줘"라고 부탁만 하던 기존 방식은, 응답 문자열 안의 큰따옴표가
+# 이스케이프되지 않으면 json.loads가 'Expecting , delimiter'로 깨졌다(분야 요약 유실 원인).
+# 스키마를 강제하면 그 파싱 실패가 원천 차단된다.
+_CATEGORY_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "overview": {"type": "string"},
+        "items": {"type": "array", "items": {"type": "string"}},
+    },
+    "required": ["overview", "items"],
+}
+
+_TRENDING_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "headline": {"type": "string"},
+        "why": {"type": "string"},
+    },
+    "required": ["headline", "why"],
+}
+
+
 def summarize_category(client, model, category, articles):
     """한 분야의 헤드라인 묶음을 Gemini로 요약한다.
 
@@ -143,7 +168,14 @@ def summarize_category(client, model, category, articles):
     )
 
     try:
-        resp = client.models.generate_content(model=model, contents=prompt)
+        resp = client.models.generate_content(
+            model=model,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=_CATEGORY_SCHEMA,
+            ),
+        )
         raw = _unwrap_codeblock(resp.text)
         data = json.loads(raw)
 
@@ -186,7 +218,14 @@ def summarize_trending(client, model, articles):
     )
 
     try:
-        resp = client.models.generate_content(model=model, contents=prompt)
+        resp = client.models.generate_content(
+            model=model,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=_TRENDING_SCHEMA,
+            ),
+        )
         data = json.loads(_unwrap_codeblock(resp.text))
         headline = str(data.get("headline", "")).strip()
         why = str(data.get("why", "")).strip()
