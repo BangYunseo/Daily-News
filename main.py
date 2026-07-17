@@ -50,9 +50,11 @@ def load_env():
         sys.exit(1)
 
     # 모델명은 선택 항목. 없으면 기본값을 쓴다.
-    # 주의: Gemini 모델명은 시점에 따라 바뀐다(예: gemini-2.0-flash는 2026-06-01 종료).
-    # 최신 모델 ID는 https://ai.google.dev/gemini-api/docs/models 에서 확인할 것.
-    env["GEMINI_MODEL"] = os.environ.get("GEMINI_MODEL", "").strip() or "gemini-2.5-flash"
+    # gemini-3.1-flash-lite는 무료 티어 한도가 가장 넉넉하고(분당 15회 / 하루 500회)
+    # 헤드라인 요약에 충분하다. 다른 모델(gemini-3.5-flash 등) 고정은 GEMINI_MODEL 변수로.
+    # 주의: 모델은 시점에 따라 종료/차단된다(2.0-flash 종료, 2.5-flash 신규 사용자 차단).
+    # 가용 모델·할당량은 https://ai.google.dev/gemini-api/docs/models 및 콘솔에서 확인.
+    env["GEMINI_MODEL"] = os.environ.get("GEMINI_MODEL", "").strip() or "gemini-3.1-flash-lite"
 
     # 보내는 주소(From)도 선택 항목.
     # Resend에서 도메인 인증을 하지 않았다면 반드시 onboarding@resend.dev 를 써야 하며,
@@ -154,11 +156,12 @@ def summarize_category(client, model, category, articles):
         return {"overview": overview, "items": items[:4]}
 
     except Exception as e:
-        # 요약이 실패해도 브리핑 자체는 나가야 하므로 원본 헤드라인으로 대체한다.
-        print(f"[WARN] '{category}' 요약 실패 → 원본 헤드라인으로 대체: {e}", file=sys.stderr)
+        # 요약이 실패해도 브리핑 자체는 나가야 한다.
+        # 단, 원본 헤드라인을 항목으로 나열하지 않고(요청사항) 아래 '원문 보기' 링크만 남긴다.
+        print(f"[WARN] '{category}' 요약 실패 → 원문 링크만 표시: {e}", file=sys.stderr)
         return {
-            "overview": f"{category} 자동 요약에 실패하여 원본 헤드라인을 표시합니다.",
-            "items": [a["title"] for a in articles[:4]],
+            "overview": "자동 요약에 실패했습니다. 아래 원문 링크를 확인하세요.",
+            "items": [],
         }
 
 
@@ -183,11 +186,19 @@ def build_html(sections, now):
         cat = html.escape(sec["category"])
         overview = html.escape(sec["overview"])
 
-        # 핵심 항목 목록
-        item_lis = "".join(
-            f'<li style="margin:5px 0;">{html.escape(it)}</li>'
-            for it in sec["items"]
-        ) or '<li style="margin:5px 0;color:#999;">핵심 항목 없음</li>'
+        # 핵심 항목: 요약이 있을 때만 렌더링한다.
+        # (자동 요약 실패 시엔 원본 헤드라인을 나열하지 않고 아래 '원문 보기'만 남긴다.)
+        if sec["items"]:
+            item_lis = "".join(
+                f'<li style="margin:5px 0;">{html.escape(it)}</li>'
+                for it in sec["items"]
+            )
+            items_block = (
+                '<ul style="margin:0 0 12px;padding-left:20px;'
+                f'color:#1f2937;line-height:1.65;">{item_lis}</ul>'
+            )
+        else:
+            items_block = ""
 
         # 원문 링크 목록 (이메일에선 접기/펼치기가 안 되므로 그냥 나열)
         link_lis = "".join(
@@ -203,7 +214,7 @@ def build_html(sections, now):
           <h2 style="font-size:18px;margin:0 0 8px;color:#111827;
                      border-left:4px solid #2563eb;padding-left:10px;">{cat}</h2>
           <p style="margin:0 0 10px;color:#374151;line-height:1.65;">{overview}</p>
-          <ul style="margin:0 0 12px;padding-left:20px;color:#1f2937;line-height:1.65;">{item_lis}</ul>
+          {items_block}
           <div style="font-size:13px;color:#6b7280;margin-bottom:4px;">원문 보기</div>
           <ul style="margin:0;padding-left:20px;font-size:14px;">{link_lis}</ul>
         </div>""")

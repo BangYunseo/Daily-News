@@ -2,9 +2,9 @@ name: daily-news-brief
 
 on:
   schedule:
-    # cron은 UTC 기준. UTC 22:00 = KST 07:00.
-    # (GitHub의 예약 실행은 부하에 따라 수 분~수십 분 지연될 수 있음)
-    - cron: "0 22 * * *"
+    # cron은 UTC 기준. UTC 23:30 = KST 08:30.
+    # (GitHub의 예약 실행은 부하에 따라 수 분~수십 분 지연될 수 있음. 정시(:00)보다 지연이 덜한 편)
+    - cron: "30 23 * * *"
   workflow_dispatch: {}   # Actions 탭에서 수동 실행 버튼 제공
 
 jobs:

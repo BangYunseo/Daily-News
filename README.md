@@ -1,6 +1,6 @@
 # 매일 뉴스 브리핑 (GitHub Actions + Gemini)
 
-분야별 뉴스를 매일 아침 07:00(KST)에 요약해 이메일로 보내는 최소 파이프라인.
+분야별 뉴스를 매일 아침 08:30(KST)에 요약해 이메일로 보내는 최소 파이프라인.
 
 ```
 GitHub Actions (cron)
@@ -48,14 +48,14 @@ GitHub Actions (cron)
 
 | 이름 | 값 |
 |------|-----|
-| `GEMINI_MODEL` | 모델명 변경용. 없으면 코드 기본값(`gemini-2.5-flash`). 최신 목록: ai.google.dev/gemini-api/docs/models |
+| `GEMINI_MODEL` | 특정 모델 고정용(예: `gemini-3.5-flash`). 없으면 코드 기본값 `gemini-3.1-flash-lite`(무료 티어 한도 넉넉). 목록: ai.google.dev/gemini-api/docs/models |
 | `MAIL_FROM` | 보내는 주소. 도메인 인증을 마쳤다면 `뉴스 브리핑 <news@내도메인.com>` 형태로. 없으면 `onboarding@resend.dev`. |
 
 > **주의:** API 키·이메일 주소는 코드나 커밋에 절대 넣지 말고, 반드시 GitHub Secrets에만 저장한다. 어떤 챗봇/외부 도구에도 이 값들을 붙여넣지 않는다.
 
 ### 5) 동작 확인
 - 저장소 > Actions 탭 > `daily-news-brief` > **Run workflow** 로 수동 실행해 본다.
-- 로그가 초록불이고 메일이 오면 성공. 이후엔 매일 07:00 KST에 자동 실행된다.
+- 로그가 초록불이고 메일이 오면 성공. 이후엔 매일 08:30 KST에 자동 실행된다.
 
 ## 알아둘 제약 (정직한 한계)
 
