@@ -48,7 +48,7 @@ GitHub Actions (cron)
 
 | 이름 | 값 |
 |------|-----|
-| `GEMINI_MODEL` | 모델명 변경용. 없으면 코드 기본값(`gemini-2.0-flash`). |
+| `GEMINI_MODEL` | 모델명 변경용. 없으면 코드 기본값(`gemini-2.5-flash`). 최신 목록: ai.google.dev/gemini-api/docs/models |
 | `MAIL_FROM` | 보내는 주소. 도메인 인증을 마쳤다면 `뉴스 브리핑 <news@내도메인.com>` 형태로. 없으면 `onboarding@resend.dev`. |
 
 > **주의:** API 키·이메일 주소는 코드나 커밋에 절대 넣지 말고, 반드시 GitHub Secrets에만 저장한다. 어떤 챗봇/외부 도구에도 이 값들을 붙여넣지 않는다.

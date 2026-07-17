@@ -50,8 +50,9 @@ def load_env():
         sys.exit(1)
 
     # 모델명은 선택 항목. 없으면 기본값을 쓴다.
-    # 주의: Gemini 모델명은 시점에 따라 바뀌므로 최신값을 ai.google.dev에서 확인할 것.
-    env["GEMINI_MODEL"] = os.environ.get("GEMINI_MODEL", "").strip() or "gemini-2.0-flash"
+    # 주의: Gemini 모델명은 시점에 따라 바뀐다(예: gemini-2.0-flash는 2026-06-01 종료).
+    # 최신 모델 ID는 https://ai.google.dev/gemini-api/docs/models 에서 확인할 것.
+    env["GEMINI_MODEL"] = os.environ.get("GEMINI_MODEL", "").strip() or "gemini-2.5-flash"
 
     # 보내는 주소(From)도 선택 항목.
     # Resend에서 도메인 인증을 하지 않았다면 반드시 onboarding@resend.dev 를 써야 하며,
