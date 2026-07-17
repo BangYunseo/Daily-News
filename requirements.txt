@@ -5,3 +5,7 @@ feedparser>=6.0.0
 # 주의: 예전 'google-generativeai' 패키지와 다르다. import 구문도 'from google import genai' 로 다르다.
 # SDK 버전/사용법은 시점에 따라 바뀔 수 있으니 https://ai.google.dev 에서 최신값을 확인할 것.
 google-genai>=0.3.0
+
+# 이메일 발송 (Resend 공식 SDK).
+# stdlib urllib로 api.resend.com에 직접 POST하면 Cloudflare가 403(error 1010)으로 막는 경우가 있어 SDK를 쓴다.
+resend>=2.0.0

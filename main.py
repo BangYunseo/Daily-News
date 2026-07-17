@@ -19,10 +19,9 @@ import json
 import html
 import re
 import datetime
-import urllib.request
-import urllib.error
 
 import feedparser
+import resend
 from google import genai
 
 from feeds import CATEGORIES, ITEMS_PER_CATEGORY
@@ -233,42 +232,29 @@ def build_html(sections, now):
 # ---------------------------------------------------------------------------
 
 def send_email(env, subject, html_body):
-    """Resend API(https://api.resend.com/emails)로 HTML 메일을 발송한다.
+    """Resend 공식 SDK로 HTML 메일을 발송한다.
 
     MAIL_TO는 콤마로 구분된 여러 수신자를 지원한다.
     단, Resend 도메인 인증 전(onboarding@resend.dev)에는
     '가입한 Resend 계정 이메일' 한 곳으로만 발송되고 다른 주소는 거부된다.
 
     발송 실패는 예외를 그대로 올려서 상위(main)에서 실패 종료하도록 둔다.
+    (stdlib urllib로 api.resend.com에 직접 POST하면 앞단 Cloudflare가 403 error 1010으로
+     막는 경우가 있어, 공식 SDK를 사용한다.)
     """
+    resend.api_key = env["RESEND_API_KEY"]
+
     recipients = [r.strip() for r in env["MAIL_TO"].split(",") if r.strip()]
 
-    payload = json.dumps({
+    result = resend.Emails.send({
         "from": env["MAIL_FROM"],
         "to": recipients,
         "subject": subject,
         "html": html_body,
-    }).encode("utf-8")
+    })
 
-    req = urllib.request.Request(
-        "https://api.resend.com/emails",
-        data=payload,
-        headers={
-            "Authorization": f"Bearer {env['RESEND_API_KEY']}",
-            "Content-Type": "application/json",
-        },
-        method="POST",
-    )
-
-    try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-    except urllib.error.HTTPError as e:
-        # Resend가 돌려주는 에러 본문에 원인(권한/수신자 제한 등)이 담겨 있으므로 그대로 노출한다.
-        detail = e.read().decode("utf-8", "replace")
-        raise RuntimeError(f"Resend API 오류 {e.code}: {detail}") from e
-
-    print(f"[OK] 발송 완료 (id={data.get('id', '?')}) → {', '.join(recipients)}")
+    email_id = result.get("id") if isinstance(result, dict) else getattr(result, "id", "?")
+    print(f"[OK] 발송 완료 (id={email_id}) → {', '.join(recipients)}")
 
 
 # ---------------------------------------------------------------------------
