@@ -7,9 +7,9 @@ GitHub Actions에서 하루 1회 실행되는 것을 전제로 한다.
   1) feeds.py의 분야별 RSS 주소에서 오늘자 헤드라인을 수집
   2) 분야별로 Gemini에게 요약을 요청 (종합 2~3문장 + 핵심 항목 최대 4개)
   3) 요약 결과를 HTML 이메일 본문으로 조립
-  4) Gmail SMTP(SSL)로 발송
+  4) Resend API로 발송
 
-민감정보(GEMINI_API_KEY, GMAIL_USER, GMAIL_APP_PASSWORD, MAIL_TO)는
+민감정보(GEMINI_API_KEY, RESEND_API_KEY, MAIL_TO)는
 전부 환경변수로 주입한다. 코드나 저장소에 절대 하드코딩하지 않는다.
 """
 
@@ -19,8 +19,8 @@ import json
 import html
 import re
 import datetime
-import smtplib
-from email.mime.text import MIMEText
+import urllib.request
+import urllib.error
 
 import feedparser
 from google import genai
@@ -35,9 +35,9 @@ from feeds import CATEGORIES, ITEMS_PER_CATEGORY
 def load_env():
     """필수 환경변수를 읽는다. 하나라도 비어 있으면 즉시 실패 종료한다.
 
-    반환: dict (GEMINI_API_KEY, GMAIL_USER, GMAIL_APP_PASSWORD, MAIL_TO, GEMINI_MODEL)
+    반환: dict (GEMINI_API_KEY, RESEND_API_KEY, MAIL_TO, MAIL_FROM, GEMINI_MODEL)
     """
-    required = ["GEMINI_API_KEY", "GMAIL_USER", "GMAIL_APP_PASSWORD", "MAIL_TO"]
+    required = ["GEMINI_API_KEY", "RESEND_API_KEY", "MAIL_TO"]
     env = {}
     missing = []
     for key in required:
@@ -53,6 +53,14 @@ def load_env():
     # 모델명은 선택 항목. 없으면 기본값을 쓴다.
     # 주의: Gemini 모델명은 시점에 따라 바뀌므로 최신값을 ai.google.dev에서 확인할 것.
     env["GEMINI_MODEL"] = os.environ.get("GEMINI_MODEL", "").strip() or "gemini-2.0-flash"
+
+    # 보내는 주소(From)도 선택 항목.
+    # Resend에서 도메인 인증을 하지 않았다면 반드시 onboarding@resend.dev 를 써야 하며,
+    # 이 경우 '가입한 Resend 계정 이메일' 한 곳으로만 발송된다(= MAIL_TO를 그 주소로 둘 것).
+    # 도메인 인증을 마쳤다면 MAIL_FROM에 news@내도메인.com 형태로 넣으면 아무 수신자에게 보낼 수 있다.
+    env["MAIL_FROM"] = (
+        os.environ.get("MAIL_FROM", "").strip() or "뉴스 브리핑 <onboarding@resend.dev>"
+    )
     return env
 
 
@@ -225,23 +233,42 @@ def build_html(sections, now):
 # ---------------------------------------------------------------------------
 
 def send_email(env, subject, html_body):
-    """Gmail SMTP(SSL, 465)로 HTML 메일을 발송한다.
+    """Resend API(https://api.resend.com/emails)로 HTML 메일을 발송한다.
 
     MAIL_TO는 콤마로 구분된 여러 수신자를 지원한다.
+    단, Resend 도메인 인증 전(onboarding@resend.dev)에는
+    '가입한 Resend 계정 이메일' 한 곳으로만 발송되고 다른 주소는 거부된다.
+
     발송 실패는 예외를 그대로 올려서 상위(main)에서 실패 종료하도록 둔다.
     """
     recipients = [r.strip() for r in env["MAIL_TO"].split(",") if r.strip()]
 
-    msg = MIMEText(html_body, "html", "utf-8")
-    msg["Subject"] = subject
-    msg["From"] = env["GMAIL_USER"]
-    msg["To"] = ", ".join(recipients)
+    payload = json.dumps({
+        "from": env["MAIL_FROM"],
+        "to": recipients,
+        "subject": subject,
+        "html": html_body,
+    }).encode("utf-8")
 
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-        server.login(env["GMAIL_USER"], env["GMAIL_APP_PASSWORD"])
-        server.sendmail(env["GMAIL_USER"], recipients, msg.as_string())
+    req = urllib.request.Request(
+        "https://api.resend.com/emails",
+        data=payload,
+        headers={
+            "Authorization": f"Bearer {env['RESEND_API_KEY']}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
 
-    print(f"[OK] 발송 완료 → {', '.join(recipients)}")
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        # Resend가 돌려주는 에러 본문에 원인(권한/수신자 제한 등)이 담겨 있으므로 그대로 노출한다.
+        detail = e.read().decode("utf-8", "replace")
+        raise RuntimeError(f"Resend API 오류 {e.code}: {detail}") from e
+
+    print(f"[OK] 발송 완료 (id={data.get('id', '?')}) → {', '.join(recipients)}")
 
 
 # ---------------------------------------------------------------------------

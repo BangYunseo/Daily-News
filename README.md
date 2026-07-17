@@ -8,7 +8,7 @@ GitHub Actions (cron)
         1) RSS 수집        (feeds.py + feedparser)
         2) Gemini 요약     (google-genai)
         3) HTML 조립
-        4) Gmail SMTP 발송
+        4) Resend API 발송
 ```
 
 ## 구성 파일
@@ -28,24 +28,30 @@ GitHub Actions (cron)
 ### 2) Gemini API 키 발급
 - https://aistudio.google.com 에서 API 키를 만든다.
 
-### 3) Gmail 앱 비밀번호 발급
-- 보내는 Gmail 계정에 **2단계 인증**을 먼저 켠다.
-- Google 계정 > 보안 > 앱 비밀번호에서 16자리 앱 비밀번호를 발급받는다.
-- 일반 로그인 비밀번호로는 SMTP 로그인이 되지 않는다.
+### 3) Resend API 키 발급
+- https://resend.com 에 가입하고 **API Keys** 메뉴에서 키(`re_...`)를 발급받는다.
+- **도메인 인증 전(테스트 모드)** 에는 보내는 주소가 `onboarding@resend.dev` 로 고정되고,
+  **가입한 Resend 계정 이메일 한 곳으로만** 발송된다. 이때 받는 주소(`MAIL_TO`)는 그 계정 이메일로 둔다.
+- 아무 주소(예: 별도 네이버)로 보내려면 Resend에서 **도메인 인증(DNS 레코드 추가)** 을 마친 뒤,
+  아래 `MAIL_FROM` 변수에 `news@내도메인.com` 형태로 넣는다.
 
 ### 4) GitHub Secrets 등록  ← 민감정보는 전부 여기에만 넣는다
-저장소 > Settings > Secrets and variables > Actions > **New repository secret** 으로 아래 4개를 등록한다.
+저장소 > Settings > Secrets and variables > Actions > **New repository secret** 으로 아래 3개를 등록한다.
 
 | 이름 | 값 |
 |------|-----|
-| `GEMINI_API_KEY` | 2)에서 발급한 키 |
-| `GMAIL_USER` | 보내는 Gmail 주소 (예: `me@gmail.com`) |
-| `GMAIL_APP_PASSWORD` | 3)에서 발급한 앱 비밀번호 |
-| `MAIL_TO` | 받는 주소. 콤마로 여러 명 가능 (예: `me@gmail.com, other@x.com`) |
+| `GEMINI_API_KEY` | 2)에서 발급한 Gemini 키 |
+| `RESEND_API_KEY` | 3)에서 발급한 Resend 키 (`re_...`) |
+| `MAIL_TO` | 받는 주소. 테스트 모드면 **Resend 계정 이메일** 한 곳. (도메인 인증 후엔 콤마로 여러 명 가능) |
 
-(선택) 모델명을 바꾸려면 Variables 탭에 `GEMINI_MODEL`을 넣는다. 없으면 코드 기본값(`gemini-2.0-flash`)을 쓴다.
+(선택) **Variables** 탭에 아래를 넣을 수 있다.
 
-> **주의:** API 키·앱 비밀번호·이메일 주소는 코드나 커밋에 절대 넣지 말고, 반드시 GitHub Secrets에만 저장한다. 어떤 챗봇/외부 도구에도 이 값들을 붙여넣지 않는다.
+| 이름 | 값 |
+|------|-----|
+| `GEMINI_MODEL` | 모델명 변경용. 없으면 코드 기본값(`gemini-2.0-flash`). |
+| `MAIL_FROM` | 보내는 주소. 도메인 인증을 마쳤다면 `뉴스 브리핑 <news@내도메인.com>` 형태로. 없으면 `onboarding@resend.dev`. |
+
+> **주의:** API 키·이메일 주소는 코드나 커밋에 절대 넣지 말고, 반드시 GitHub Secrets에만 저장한다. 어떤 챗봇/외부 도구에도 이 값들을 붙여넣지 않는다.
 
 ### 5) 동작 확인
 - 저장소 > Actions 탭 > `daily-news-brief` > **Run workflow** 로 수동 실행해 본다.
