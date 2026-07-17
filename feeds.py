@@ -21,3 +21,8 @@ CATEGORIES = {
 # 분야별로 Gemini에 넘길 상위 기사 수.
 # 너무 크게 잡으면 토큰/비용이 늘고 요약이 산만해진다. 6~10 사이 권장.
 ITEMS_PER_CATEGORY = 8
+
+# '오늘의 화제' 배너용 대표 톱뉴스 피드(사람들이 많이 보는 헤드라인 모음).
+# 여기 상위 헤드라인들을 Gemini에 넘겨 '지금 가장 화제인 이슈'를 한 건 뽑는다.
+TRENDING_FEED = "https://news.google.com/rss?hl=ko&gl=KR&ceid=KR:ko"
+TRENDING_ITEMS = 6

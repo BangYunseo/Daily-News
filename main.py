@@ -24,7 +24,7 @@ import feedparser
 import resend
 from google import genai
 
-from feeds import CATEGORIES, ITEMS_PER_CATEGORY
+from feeds import CATEGORIES, ITEMS_PER_CATEGORY, TRENDING_FEED, TRENDING_ITEMS
 
 
 # ---------------------------------------------------------------------------
@@ -165,11 +165,44 @@ def summarize_category(client, model, category, articles):
         }
 
 
+def summarize_trending(client, model, articles):
+    """오늘 가장 화제인 이슈 하나를 뽑아 '무엇이·왜 화제인지' 요약한다.
+
+    반환: {"headline": str, "why": str} 또는 None(데이터 없음/실패).
+    실패해도 예외를 올리지 않는다 — 화제 배너는 '있으면 좋은' 부가 요소이므로
+    브리핑 본문 발송을 막지 않는다.
+    """
+    if not articles:
+        return None
+
+    headline_block = "\n".join(f"- {a['title']}" for a in articles)
+    prompt = (
+        "다음은 오늘 한국 주요 톱뉴스 헤드라인 목록이다.\n"
+        "이 중 지금 사람들의 관심을 가장 많이 받는 '화제의 이슈' 하나를 고르고,\n"
+        "무엇이 화제이며 왜 화제가 되는지 한국어로 설명하라.\n"
+        "반드시 아래 JSON 형식 하나만 출력하라(코드블록·다른 설명 금지).\n"
+        '{"headline": "화제 이슈를 한 문장으로", "why": "왜 화제인지 2~3문장"}\n\n'
+        f"[톱뉴스 헤드라인]\n{headline_block}"
+    )
+
+    try:
+        resp = client.models.generate_content(model=model, contents=prompt)
+        data = json.loads(_unwrap_codeblock(resp.text))
+        headline = str(data.get("headline", "")).strip()
+        why = str(data.get("why", "")).strip()
+        if not headline and not why:
+            return None
+        return {"headline": headline, "why": why}
+    except Exception as e:
+        print(f"[WARN] 화제 뉴스 요약 실패 → 화제 배너 생략: {e}", file=sys.stderr)
+        return None
+
+
 # ---------------------------------------------------------------------------
 # 4. 이메일 HTML 조립
 # ---------------------------------------------------------------------------
 
-def build_html(sections, now):
+def build_html(sections, now, trending=None):
     """분야별 요약 리스트를 받아 이메일 HTML 본문 문자열을 만든다.
 
     sections: [{
@@ -178,11 +211,15 @@ def build_html(sections, now):
         "items": [str, ...],
         "articles": [{"title": str, "link": str}, ...]
     }, ...]
+    trending: {"headline": str, "why": str, "link": str} 또는 None.
+              값이 있으면 맨 아래 '오늘의 화제' 강조 배너를 추가한다.
     """
     date_label = now.strftime("%Y년 %m월 %d일")
 
-    blocks = []
-    for sec in sections:
+    # 카드별 강조색을 인덱스로 순환한다(feeds.py에서 분야를 바꿔도 안전).
+    accents = ["#0f766e", "#b45309", "#1d4ed8", "#6d28d9", "#be123c", "#0369a1"]
+
+    def _card(sec, accent):
         cat = html.escape(sec["category"])
         overview = html.escape(sec["overview"])
 
@@ -190,51 +227,127 @@ def build_html(sections, now):
         # (자동 요약 실패 시엔 원본 헤드라인을 나열하지 않고 아래 '원문 보기'만 남긴다.)
         if sec["items"]:
             item_lis = "".join(
-                f'<li style="margin:5px 0;">{html.escape(it)}</li>'
+                f'<li style="margin:0 0 6px;">{html.escape(it)}</li>'
                 for it in sec["items"]
             )
             items_block = (
-                '<ul style="margin:0 0 12px;padding-left:20px;'
-                f'color:#1f2937;line-height:1.65;">{item_lis}</ul>'
+                '<ul style="margin:0 0 14px;padding-left:18px;'
+                f'color:#374151;font-size:14px;line-height:1.6;">{item_lis}</ul>'
             )
         else:
             items_block = ""
 
         # 원문 링크 목록 (이메일에선 접기/펼치기가 안 되므로 그냥 나열)
         link_lis = "".join(
-            f'<li style="margin:4px 0;">'
+            f'<li style="margin:0 0 5px;">'
             f'<a href="{html.escape(a["link"])}" '
-            f'style="color:#2563eb;text-decoration:none;">{html.escape(a["title"])}</a>'
-            f'</li>'
+            f'style="color:{accent};text-decoration:none;">{html.escape(a["title"])}</a></li>'
             for a in sec["articles"] if a["link"]
-        ) or '<li style="color:#999;">원문 링크 없음</li>'
+        ) or '<li style="color:#9ca3af;">원문 링크 없음</li>'
 
-        blocks.append(f"""
-        <div style="margin-bottom:28px;">
-          <h2 style="font-size:18px;margin:0 0 8px;color:#111827;
-                     border-left:4px solid #2563eb;padding-left:10px;">{cat}</h2>
-          <p style="margin:0 0 10px;color:#374151;line-height:1.65;">{overview}</p>
-          {items_block}
-          <div style="font-size:13px;color:#6b7280;margin-bottom:4px;">원문 보기</div>
-          <ul style="margin:0;padding-left:20px;font-size:14px;">{link_lis}</ul>
-        </div>""")
+        link_count = sum(1 for a in sec["articles"] if a["link"])
 
-    body = "".join(blocks)
+        # 카드 한 장(이메일 호환을 위해 table 기반, 스타일은 전부 인라인).
+        # 원문 보기는 <details> 토글: 지원 클라이언트(Apple Mail·웹메일)에선 접기/펼치기,
+        # 미지원(Gmail 등)에선 펼쳐진 목록으로 안전하게 폴백된다(링크가 사라지지 않음).
+        return (
+            '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"'
+            ' style="background:#ffffff;border:1px solid #e6e8ec;border-radius:12px;">'
+            '<tr><td style="padding:18px 18px 16px;">'
+            f'<div style="font-size:17px;font-weight:700;color:{accent};margin:0 0 6px;">{cat}</div>'
+            f'<div style="height:2px;width:32px;background:{accent};opacity:0.4;'
+            'margin:0 0 12px;font-size:0;line-height:0;">&nbsp;</div>'
+            f'<p style="margin:0 0 12px;color:#3f4650;font-size:14px;line-height:1.65;">{overview}</p>'
+            f'{items_block}'
+            f'<details><summary style="cursor:pointer;font-size:11px;letter-spacing:0.08em;'
+            f'text-transform:uppercase;color:{accent};font-weight:600;margin:0;">'
+            f'원문 보기 ({link_count})</summary>'
+            f'<ul style="margin:8px 0 0;padding-left:18px;font-size:13px;line-height:1.55;">{link_lis}</ul>'
+            '</details>'
+            '</td></tr></table>'
+        )
+
+    # 2열 카드 그리드: 분야를 두 개씩 묶어 각 행(tr)을 만든다.
+    rows = []
+    for i in range(0, len(sections), 2):
+        pair = sections[i:i + 2]
+        left = _card(pair[0], accents[i % len(accents)])
+        left_cell = (
+            '<td class="card-cell" width="50%" valign="top" '
+            f'style="padding:0 7px 14px 0;">{left}</td>'
+        )
+        if len(pair) == 2:
+            right = _card(pair[1], accents[(i + 1) % len(accents)])
+            right_cell = (
+                '<td class="card-cell" width="50%" valign="top" '
+                f'style="padding:0 0 14px 7px;">{right}</td>'
+            )
+        else:
+            # 분야 수가 홀수면 마지막 행 오른쪽은 빈 셀로 채운다.
+            right_cell = '<td class="card-cell" width="50%" valign="top" style="padding:0;"></td>'
+        rows.append(f'<tr>{left_cell}{right_cell}</tr>')
+
+    grid = "".join(rows)
+
+    # 맨 아래 '오늘의 화제' 강조 배너(어두운 풀와이드). trending이 있을 때만.
+    trending_block = ""
+    if trending and (trending.get("headline") or trending.get("why")):
+        t_head = html.escape(trending.get("headline", ""))
+        t_why = html.escape(trending.get("why", ""))
+        t_link = html.escape(trending.get("link", ""))
+        t_link_html = (
+            f'<a href="{t_link}" style="color:#93c5fd;text-decoration:none;'
+            'font-weight:600;font-size:13px;">톱뉴스 보기 &rarr;</a>'
+        ) if t_link else ""
+        trending_block = (
+            '<tr><td style="padding:2px 1px 0;">'
+            '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"'
+            ' style="background:#111827;border-radius:12px;">'
+            '<tr><td style="padding:20px 22px;">'
+            '<div style="font-size:11px;letter-spacing:0.12em;text-transform:uppercase;'
+            'color:#fbbf24;margin:0 0 8px;">지금 가장 화제</div>'
+            f'<div style="font-size:18px;font-weight:700;color:#ffffff;line-height:1.4;margin:0 0 8px;">{t_head}</div>'
+            f'<p style="font-size:14px;color:#cbd5e1;line-height:1.65;margin:0 0 12px;">{t_why}</p>'
+            f'{t_link_html}'
+            '</td></tr></table>'
+            '</td></tr>'
+        )
 
     return f"""<!DOCTYPE html>
 <html lang="ko">
-<head><meta charset="utf-8"></head>
-<body style="margin:0;padding:0;background:#f3f4f6;">
-  <div style="max-width:640px;margin:0 auto;padding:24px;background:#ffffff;
-              font-family:-apple-system,'Segoe UI','Malgun Gothic',sans-serif;">
-    <h1 style="font-size:22px;margin:0 0 4px;color:#111827;">오늘의 뉴스 브리핑</h1>
-    <div style="font-size:14px;color:#6b7280;margin-bottom:24px;">{date_label}</div>
-    {body}
-    <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0;">
-    <div style="font-size:12px;color:#9ca3af;line-height:1.6;">
-      자동 생성된 브리핑입니다. 요약은 헤드라인과 짧은 설명을 기반으로 하며 원문과 다를 수 있습니다.
-    </div>
-  </div>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  /* 모바일에선 2열 카드를 1열로 쌓는다(미디어쿼리 지원 클라이언트 한정). */
+  @media only screen and (max-width:600px) {{
+    .card-cell {{ display:block !important; width:100% !important; padding:0 0 14px 0 !important; }}
+  }}
+</style>
+</head>
+<body style="margin:0;padding:0;background:#eef0f3;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#eef0f3;">
+    <tr><td align="center" style="padding:24px 12px;">
+      <table role="presentation" width="640" cellpadding="0" cellspacing="0" border="0"
+             style="width:640px;max-width:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Malgun Gothic','Apple SD Gothic Neo',sans-serif;">
+        <tr><td style="padding:2px 8px 20px;">
+          <div style="font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:#8b93a0;margin:0 0 7px;">Daily Briefing &middot; {date_label}</div>
+          <h1 style="font-size:24px;line-height:1.25;margin:0;color:#111827;font-weight:800;">오늘의 뉴스 브리핑</h1>
+        </td></tr>
+        <tr><td>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+            {grid}
+          </table>
+        </td></tr>
+        {trending_block}
+        <tr><td style="padding:14px 8px 4px;">
+          <div style="border-top:1px solid #dfe2e7;padding-top:14px;font-size:12px;color:#9aa1ac;line-height:1.6;">
+            자동 생성된 브리핑입니다. 요약은 헤드라인과 짧은 설명을 기반으로 하며 원문과 다를 수 있습니다.
+          </div>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
 </body>
 </html>"""
 
@@ -293,7 +406,15 @@ def main():
             "articles": articles,
         })
 
-    html_body = build_html(sections, now)
+    # 맨 아래 '오늘의 화제' 배너: 대표 톱뉴스에서 가장 화제인 이슈를 뽑아 요약한다.
+    # 실패하면 None이 되어 배너만 생략될 뿐, 본문 발송은 그대로 진행된다.
+    trending_articles = fetch_category(TRENDING_FEED, TRENDING_ITEMS)
+    trending = summarize_trending(client, env["GEMINI_MODEL"], trending_articles)
+    if trending:
+        top = next((a for a in trending_articles if a["link"]), None)
+        trending["link"] = top["link"] if top else ""
+
+    html_body = build_html(sections, now, trending)
     subject = f"[뉴스 브리핑] {now.strftime('%m/%d')} 오늘의 분야별 요약"
 
     try:
