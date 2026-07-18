@@ -289,6 +289,7 @@ def build_html(sections, now, trending=None):
         # 카드 한 장(이메일 호환을 위해 table 기반, 스타일은 전부 인라인).
         # 원문 보기는 <details> 토글: 지원 클라이언트(Apple Mail·웹메일)에선 접기/펼치기,
         # 미지원(Gmail 등)에선 펼쳐진 목록으로 안전하게 폴백된다(링크가 사라지지 않음).
+        # 토글 요약은 카드 우측에 정렬한다(list-style:none으로 좌측 삼각형 마커 제거).
         return (
             '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"'
             ' style="background:#ffffff;border:1px solid #e6e8ec;border-radius:12px;">'
@@ -298,33 +299,23 @@ def build_html(sections, now, trending=None):
             'margin:0 0 12px;font-size:0;line-height:0;">&nbsp;</div>'
             f'<p style="margin:0 0 12px;color:#3f4650;font-size:14px;line-height:1.65;">{overview}</p>'
             f'{items_block}'
-            f'<details><summary style="cursor:pointer;font-size:11px;letter-spacing:0.08em;'
+            f'<details style="margin:0;"><summary style="cursor:pointer;list-style:none;'
+            f'text-align:right;font-size:11px;letter-spacing:0.08em;'
             f'text-transform:uppercase;color:{accent};font-weight:600;margin:0;">'
-            f'원문 보기 ({link_count})</summary>'
-            f'<ul style="margin:8px 0 0;padding-left:18px;font-size:13px;line-height:1.55;">{link_lis}</ul>'
+            f'원문 보기 ({link_count}) &#9662;</summary>'
+            f'<ul style="margin:8px 0 0;padding-left:18px;font-size:13px;line-height:1.55;'
+            f'text-align:left;">{link_lis}</ul>'
             '</details>'
             '</td></tr></table>'
         )
 
-    # 2열 카드 그리드: 분야를 두 개씩 묶어 각 행(tr)을 만든다.
+    # 세로 1열 카드 스택: 분야마다 카드 한 장을 한 행(tr)으로 쌓는다.
+    # (2열 그리드에서 생기던 좌우 카드 높이 불일치 문제를 근본적으로 제거하고,
+    #  네이버 등 모바일 메일에서 토글 펼침 시 하단 스크롤이 막히던 현상도 완화된다.)
     rows = []
-    for i in range(0, len(sections), 2):
-        pair = sections[i:i + 2]
-        left = _card(pair[0], accents[i % len(accents)])
-        left_cell = (
-            '<td class="card-cell" width="50%" valign="top" '
-            f'style="padding:0 7px 14px 0;">{left}</td>'
-        )
-        if len(pair) == 2:
-            right = _card(pair[1], accents[(i + 1) % len(accents)])
-            right_cell = (
-                '<td class="card-cell" width="50%" valign="top" '
-                f'style="padding:0 0 14px 7px;">{right}</td>'
-            )
-        else:
-            # 분야 수가 홀수면 마지막 행 오른쪽은 빈 셀로 채운다.
-            right_cell = '<td class="card-cell" width="50%" valign="top" style="padding:0;"></td>'
-        rows.append(f'<tr>{left_cell}{right_cell}</tr>')
+    for i, sec in enumerate(sections):
+        card = _card(sec, accents[i % len(accents)])
+        rows.append(f'<tr><td valign="top" style="padding:0 0 14px 0;">{card}</td></tr>')
 
     grid = "".join(rows)
 
@@ -358,10 +349,10 @@ def build_html(sections, now, trending=None):
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
-  /* 모바일에선 2열 카드를 1열로 쌓는다(미디어쿼리 지원 클라이언트 한정). */
-  @media only screen and (max-width:600px) {{
-    .card-cell {{ display:block !important; width:100% !important; padding:0 0 14px 0 !important; }}
-  }}
+  /* 원문 보기 토글의 기본 삼각형 마커를 숨겨 우측 정렬이 깔끔하게 보이도록 한다.
+     (미지원 클라이언트에선 마커가 남을 수 있으나 기능·레이아웃엔 영향 없음) */
+  details > summary {{ list-style: none; }}
+  details > summary::-webkit-details-marker {{ display: none; }}
 </style>
 </head>
 <body style="margin:0;padding:0;background:#eef0f3;">
