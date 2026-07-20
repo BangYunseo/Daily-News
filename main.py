@@ -423,6 +423,9 @@ def send_email(env, subject, html_body):
 # ---------------------------------------------------------------------------
 
 def main():
+    # 진행 상황을 콘솔에 단계별로 찍는다. flush=True로 즉시 출력해
+    # 로컬 실행(run.bat) 중 "지금 어디까지 됐는지"가 실시간으로 보이게 한다.
+    print("[준비] 환경설정 로딩 중...", flush=True)
     env = load_env()
 
     # GitHub Actions 러너는 UTC로 도므로, 표기용 시각은 KST(UTC+9)로 직접 만든다.
@@ -430,10 +433,14 @@ def main():
     now = datetime.datetime.now(kst)
 
     client = genai.Client(api_key=env["GEMINI_API_KEY"])
+    print(f"[준비] Gemini 모델: {env['GEMINI_MODEL']}", flush=True)
 
+    total = len(CATEGORIES)
     sections = []
-    for category, url in CATEGORIES.items():
+    for idx, (category, url) in enumerate(CATEGORIES.items(), start=1):
+        print(f"[{idx}/{total}] '{category}' 수집 중...", flush=True)
         articles = fetch_category(url, ITEMS_PER_CATEGORY)
+        print(f"[{idx}/{total}] '{category}' 기사 {len(articles)}건 → Gemini 요약 중...", flush=True)
         summary = summarize_category(client, env["GEMINI_MODEL"], category, articles)
         sections.append({
             "category": category,
@@ -444,15 +451,18 @@ def main():
 
     # 맨 아래 '오늘의 화제' 배너: 대표 톱뉴스에서 가장 화제인 이슈를 뽑아 요약한다.
     # 실패하면 None이 되어 배너만 생략될 뿐, 본문 발송은 그대로 진행된다.
+    print("[화제] 오늘의 화제 이슈 분석 중...", flush=True)
     trending_articles = fetch_category(TRENDING_FEED, TRENDING_ITEMS)
     trending = summarize_trending(client, env["GEMINI_MODEL"], trending_articles)
     if trending:
         top = next((a for a in trending_articles if a["link"]), None)
         trending["link"] = top["link"] if top else ""
 
+    print("[조립] 이메일 본문 생성 중...", flush=True)
     html_body = build_html(sections, now, trending)
     subject = f"[뉴스 브리핑] {now.strftime('%m/%d')} 오늘의 분야별 요약"
 
+    print("[발송] 이메일 발송 중...", flush=True)
     try:
         send_email(env, subject, html_body)
     except Exception as e:
