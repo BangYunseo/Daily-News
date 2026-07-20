@@ -27,6 +27,12 @@ from google.genai import types
 
 from feeds import CATEGORIES, ITEMS_PER_CATEGORY, TRENDING_FEED, TRENDING_ITEMS
 
+# 로컬 실행 시 프로젝트 루트의 .env에서 환경변수를 읽는다.
+# GitHub Actions에는 .env가 없으므로 아무 일도 하지 않는다(시크릿을 그대로 사용).
+from dotenv import load_dotenv
+
+load_dotenv()
+
 
 # ---------------------------------------------------------------------------
 # 1. 환경변수 로딩

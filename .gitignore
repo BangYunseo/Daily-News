@@ -17,6 +17,8 @@ ENV/
 .env
 .env.*
 *.local
+# 견본 파일은 값이 없으므로 커밋 허용 (위 .env.* 규칙의 예외)
+!.env.example
 
 # 에디터 / IDE
 .vscode/
