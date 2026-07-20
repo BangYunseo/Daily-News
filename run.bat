@@ -1,13 +1,13 @@
 @echo off
-REM 로컬에서 뉴스 브리핑을 수동 실행하는 런처.
-REM 이 파일을 더블클릭하면 명령을 직접 치지 않아도 main.py 가 실행된다.
-REM (키 값은 같은 폴더의 .env 파일에서 자동으로 읽는다)
+REM Local launcher for the daily news brief.
+REM Double-click this file to run main.py without typing any command.
+REM API keys are loaded automatically from the .env file in this folder.
 
 chcp 65001 >nul
 cd /d "%~dp0"
 
 echo ============================================
-echo   Daily-News 로컬 브리핑 실행
+echo   Daily-News : local brief run
 echo ============================================
 echo.
 
@@ -15,6 +15,6 @@ python main.py
 
 echo.
 echo ============================================
-echo   종료되었습니다. 위 결과를 확인하세요.
+echo   Finished. Check the result above.
 echo ============================================
 pause
