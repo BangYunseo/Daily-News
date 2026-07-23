@@ -10,12 +10,21 @@ Google 뉴스 RSS 토픽 피드를 기본값으로 쓴다.
 카테고리를 추가/삭제하려면 이 딕셔너리에 줄을 넣고 빼면 그대로 반영된다.
 """
 
-# 표시 순서 = 딕셔너리 정의 순서(파이썬 3.7+ 보장).
+# 표시 순서 = 딕셔너리 정의 순서(파이썬 3.7+ 보장). 순서/표시명은 자유롭게 바꿔도 된다.
+#
+# Google 뉴스가 제공하는 '표준 topic'은 아래 8개뿐이다:
+#   WORLD / NATION / BUSINESS / TECHNOLOGY / ENTERTAINMENT / SPORTS / SCIENCE / HEALTH
+# 네이버식 '정치', '생활/문화'는 Google topic에 없다(검색어로 억지 매핑하면 노이즈가 낀다).
+# 그래서 여기서는 Google 표준 topic을 그대로 쓰되 SPORTS만 뺀 7개를 채택한다.
+# ('정치'는 별도 분야가 없어 NATION=사회 안에 흡수된다.)
 CATEGORIES = {
-    "경제": "https://news.google.com/rss/headlines/section/topic/BUSINESS?hl=ko&gl=KR&ceid=KR:ko",
     "사회": "https://news.google.com/rss/headlines/section/topic/NATION?hl=ko&gl=KR&ceid=KR:ko",
+    "경제": "https://news.google.com/rss/headlines/section/topic/BUSINESS?hl=ko&gl=KR&ceid=KR:ko",
     "세계": "https://news.google.com/rss/headlines/section/topic/WORLD?hl=ko&gl=KR&ceid=KR:ko",
-    "IT/과학": "https://news.google.com/rss/headlines/section/topic/TECHNOLOGY?hl=ko&gl=KR&ceid=KR:ko",
+    "IT/기술": "https://news.google.com/rss/headlines/section/topic/TECHNOLOGY?hl=ko&gl=KR&ceid=KR:ko",
+    "과학": "https://news.google.com/rss/headlines/section/topic/SCIENCE?hl=ko&gl=KR&ceid=KR:ko",
+    "문화/연예": "https://news.google.com/rss/headlines/section/topic/ENTERTAINMENT?hl=ko&gl=KR&ceid=KR:ko",
+    "건강": "https://news.google.com/rss/headlines/section/topic/HEALTH?hl=ko&gl=KR&ceid=KR:ko",
 }
 
 # 분야별로 Gemini에 넘길 상위 기사 수.

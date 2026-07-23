@@ -262,7 +262,8 @@ def build_html(sections, now, trending=None):
     date_label = now.strftime("%Y년 %m월 %d일")
 
     # 카드별 강조색을 인덱스로 순환한다(feeds.py에서 분야를 바꿔도 안전).
-    accents = ["#0f766e", "#b45309", "#1d4ed8", "#6d28d9", "#be123c", "#0369a1"]
+    # 분야 수만큼(현재 7개) 색을 두어 카드끼리 색이 겹치지 않게 한다.
+    accents = ["#0f766e", "#b45309", "#1d4ed8", "#6d28d9", "#be123c", "#0369a1", "#4d7c0f"]
 
     def _card(sec, accent):
         cat = html.escape(sec["category"])
