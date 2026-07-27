@@ -167,6 +167,10 @@ def summarize_category(client, model, category, articles):
     prompt = (
         f"다음은 오늘 '{category}' 분야 뉴스 헤드라인과 짧은 설명 목록이다.\n"
         f"이것을 바탕으로 한국어로 요약하라.\n"
+        f"제공된 헤드라인과 설명에 실제로 있는 내용만으로 요약하라.\n"
+        f"목록에 없는 인물명·직함·숫자·날짜·소속은 추측하거나 채워 넣지 마라.\n"
+        f"특히 직함(대통령 등)은 원문에 명시된 경우에만 쓰고, 없으면 직함 없이 쓰거나 생략하라.\n"
+        f"네 배경지식으로 원문을 보정하거나 바꾸지 마라.\n"
         f"반드시 아래 JSON 형식 '하나만' 출력하라. 코드블록 표시나 다른 설명 텍스트는 넣지 마라.\n"
         f'{{"overview": "오늘 이 분야의 흐름을 2~3문장으로", '
         f'"items": ["핵심 이슈 한 문장", "...최대 4개까지"]}}\n\n'
@@ -180,6 +184,9 @@ def summarize_category(client, model, category, articles):
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
                 response_schema=_CATEGORY_SCHEMA,
+                # 요약은 창작이 아니라 원문 압축이다. 생성 다양성을 0으로 낮춰
+                # 모델이 사실을 각색·윤색하지 못하게 한다(정확성 우선).
+                temperature=0,
             ),
         )
         raw = _unwrap_codeblock(resp.text)
@@ -218,6 +225,10 @@ def summarize_trending(client, model, articles):
         "다음은 오늘 한국 주요 톱뉴스 헤드라인 목록이다.\n"
         "이 중 지금 사람들의 관심을 가장 많이 받는 '화제의 이슈' 하나를 고르고,\n"
         "무엇이 화제이며 왜 화제가 되는지 한국어로 설명하라.\n"
+        "제공된 헤드라인에 실제로 있는 내용만으로 설명하라.\n"
+        "목록에 없는 인물명·직함·숫자·날짜·소속은 추측하거나 채워 넣지 마라.\n"
+        "특히 직함(대통령 등)은 원문에 명시된 경우에만 쓰고, 없으면 직함 없이 쓰거나 생략하라.\n"
+        "네 배경지식으로 원문을 보정하거나 바꾸지 마라.\n"
         "반드시 아래 JSON 형식 하나만 출력하라(코드블록·다른 설명 금지).\n"
         '{"headline": "화제 이슈를 한 문장으로", "why": "왜 화제인지 2~3문장"}\n\n'
         f"[톱뉴스 헤드라인]\n{headline_block}"
@@ -230,6 +241,8 @@ def summarize_trending(client, model, articles):
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
                 response_schema=_TRENDING_SCHEMA,
+                # 배너는 제목만 받아 근거가 더 얕다. 각색 여지를 없애려 temperature=0.
+                temperature=0,
             ),
         )
         data = json.loads(_unwrap_codeblock(resp.text))
