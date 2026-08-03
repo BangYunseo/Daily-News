@@ -429,7 +429,10 @@ def send_email(env, subject, html_body):
     })
 
     email_id = result.get("id") if isinstance(result, dict) else getattr(result, "id", "?")
-    print(f"[OK] 발송 완료 (id={email_id}) → {', '.join(recipients)}")
+    # 수신자 주소는 찍지 않는다. public 저장소의 Actions 로그는 전체 공개이고,
+    # GitHub의 시크릿 마스킹은 시크릿 원문과 '정확히 일치'할 때만 동작한다.
+    # MAIL_TO가 여러 명이면 strip/join으로 원문과 달라져 마스킹을 뚫고 노출된다.
+    print(f"[OK] 발송 완료 (id={email_id}, 수신 {len(recipients)}명)")
 
 
 # ---------------------------------------------------------------------------
