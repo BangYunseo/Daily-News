@@ -455,7 +455,13 @@ def main():
     kst = datetime.timezone(datetime.timedelta(hours=9))
     now = datetime.datetime.now(kst)
 
-    client = genai.Client(api_key=env["GEMINI_API_KEY"])
+    # 503 UNAVAILABLE(모델 일시 과부하)는 재시도하면 대개 붙는다.
+    # SDK 기본값은 재시도 0회(attempts=1)라 명시적으로 켜준다.
+    # 기본 설정: 5회, 지수 백오프 약 1/2/4/8초, 408·429·5xx 대상.
+    client = genai.Client(
+        api_key=env["GEMINI_API_KEY"],
+        http_options=types.HttpOptions(retry_options=types.HttpRetryOptions()),
+    )
     print(f"[준비] Gemini 모델: {env['GEMINI_MODEL']}", flush=True)
 
     total = len(CATEGORIES)
