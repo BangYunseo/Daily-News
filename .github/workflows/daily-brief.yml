@@ -27,8 +27,5 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           MAIL_TO: ${{ secrets.MAIL_TO }}
-          # 아래 둘은 선택(Variables). 없으면 코드 기본값 사용.
-          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
-          # 도메인 인증을 마쳤다면 news@내도메인.com 형태로. 없으면 onboarding@resend.dev.
-          MAIL_FROM: ${{ vars.MAIL_FROM }}
+          # GEMINI_MODEL / MAIL_FROM 은 main.py에 고정. Variables로 오버라이드하지 않는다.
         run: python main.py

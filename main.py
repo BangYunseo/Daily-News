@@ -1,16 +1,14 @@
 # -*- coding: utf-8 -*-
 """
-매일 아침 분야별 뉴스 요약을 이메일로 보내는 파이프라인.
-GitHub Actions에서 하루 1회 실행되는 것을 전제로 한다.
+당일 뉴스 요약
 
-흐름:
-  1) feeds.py의 분야별 RSS 주소에서 오늘자 헤드라인을 수집
-  2) 분야별로 Gemini에게 요약을 요청 (종합 2~3문장 + 핵심 항목 최대 4개)
-  3) 요약 결과를 HTML 이메일 본문으로 조립
+[Flow]
+  1) feeds.py의 분야별 RSS 주소에서 헤드라인 수집
+  2) 분야별 Gemini에 요약 요청 (종합 2~3문장 + 핵심 항목 최대 4개)
+  3) 요약 결과 HTML 이메일 본문으로 조립
   4) Resend API로 발송
 
-민감정보(GEMINI_API_KEY, RESEND_API_KEY, MAIL_TO)는
-전부 환경변수로 주입한다. 코드나 저장소에 절대 하드코딩하지 않는다.
+민감정보(GEMINI_API_KEY, RESEND_API_KEY, MAIL_TO)는 Github 환경변수
 """
 
 import os
@@ -19,27 +17,19 @@ import json
 import html
 import re
 import datetime
-
 import feedparser
 import resend
 from google import genai
 from google.genai import types
-
 from feeds import CATEGORIES, ITEMS_PER_CATEGORY, TRENDING_FEED, TRENDING_ITEMS
-
-# 로컬 실행 시 프로젝트 루트의 .env에서 환경변수를 읽는다.
-# GitHub Actions에는 .env가 없으므로 아무 일도 하지 않는다(시크릿을 그대로 사용).
 from dotenv import load_dotenv
 
 load_dotenv()
 
-
-# ---------------------------------------------------------------------------
-# 1. 환경변수 로딩
-# ---------------------------------------------------------------------------
+# 1. 환경변수
 
 def load_env():
-    """필수 환경변수를 읽는다. 하나라도 비어 있으면 즉시 실패 종료한다.
+    """필수 환경변수 설정
 
     반환: dict (GEMINI_API_KEY, RESEND_API_KEY, MAIL_TO, MAIL_FROM, GEMINI_MODEL)
     """
@@ -53,29 +43,17 @@ def load_env():
         env[key] = val
 
     if missing:
-        print(f"[FATAL] 환경변수 누락: {', '.join(missing)}", file=sys.stderr)
+        print(f"[ERROR] 환경변수 누락: {', '.join(missing)}", file=sys.stderr)
         sys.exit(1)
 
-    # 모델명은 선택 항목. 없으면 기본값을 쓴다.
-    # gemini-3.1-flash-lite는 무료 티어 한도가 가장 넉넉하고(분당 15회 / 하루 500회)
-    # 헤드라인 요약에 충분하다. 다른 모델(gemini-3.5-flash 등) 고정은 GEMINI_MODEL 변수로.
-    # 주의: 모델은 시점에 따라 종료/차단된다(2.0-flash 종료, 2.5-flash 신규 사용자 차단).
-    # 가용 모델·할당량은 https://ai.google.dev/gemini-api/docs/models 및 콘솔에서 확인.
-    env["GEMINI_MODEL"] = os.environ.get("GEMINI_MODEL", "").strip() or "gemini-3.1-flash-lite"
-
-    # 보내는 주소(From)도 선택 항목.
-    # Resend에서 도메인 인증을 하지 않았다면 반드시 onboarding@resend.dev 를 써야 하며,
-    # 이 경우 '가입한 Resend 계정 이메일' 한 곳으로만 발송된다(= MAIL_TO를 그 주소로 둘 것).
-    # 도메인 인증을 마쳤다면 MAIL_FROM에 news@내도메인.com 형태로 넣으면 아무 수신자에게 보낼 수 있다.
-    env["MAIL_FROM"] = (
-        os.environ.get("MAIL_FROM", "").strip() or "뉴스 브리핑 <onboarding@resend.dev>"
-    )
+    # 모델 선택 (https://ai.google.dev/gemini-api/docs/models)
+    env["GEMINI_MODEL"] = "gemini-3.5-flash-lite"
+    env["MAIL_FROM"] = "뉴스 브리핑 <onboarding@resend.dev>"
     return env
 
 
-# ---------------------------------------------------------------------------
+
 # 2. RSS 수집
-# ---------------------------------------------------------------------------
 
 # feedparser 기본 User-Agent("feedparser/6.x +https://github.com/...")로는
 # Google 뉴스가 GitHub Actions 러너 IP에 봇 차단 페이지(HTML)를 돌려줄 때가 있다.
@@ -85,12 +63,11 @@ _UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
 
 _TAG_RE = re.compile(r"<[^>]+>")
 
-
 def _strip_html(text):
-    """RSS summary에 섞여 오는 HTML 태그를 제거한다."""
     if not text:
         return ""
     return _TAG_RE.sub("", text)
+
 
 
 def fetch_category(url, limit):
@@ -101,7 +78,7 @@ def fetch_category(url, limit):
     """
     parsed = feedparser.parse(url, agent=_UA)
 
-    # bozo=1 이면서 항목도 없으면 파싱 실패로 간주한다.
+    # bozo=1 이면서 항목이 없다면 파싱 실패
     if parsed.bozo and not parsed.entries:
         print(f"[WARN] RSS 파싱 실패: {url} ({parsed.bozo_exception})", file=sys.stderr)
         return []
@@ -116,9 +93,7 @@ def fetch_category(url, limit):
     return items
 
 
-# ---------------------------------------------------------------------------
 # 3. Gemini 요약
-# ---------------------------------------------------------------------------
 
 def _unwrap_codeblock(text):
     """Gemini가 ```json ... ``` 코드블록으로 감싸 응답하는 경우를 벗겨낸다."""
@@ -134,11 +109,8 @@ def _unwrap_codeblock(text):
     return t.strip()
 
 
-# 구조화 출력(structured output) 스키마.
-# response_schema로 넘기면 모델이 이 형태의 '유효한 JSON'만 반환하도록 강제된다.
-# 프롬프트로 "JSON 줘"라고 부탁만 하던 기존 방식은, 응답 문자열 안의 큰따옴표가
-# 이스케이프되지 않으면 json.loads가 'Expecting , delimiter'로 깨졌다(분야 요약 유실 원인).
-# 스키마를 강제하면 그 파싱 실패가 원천 차단된다.
+# 구조화 출력(structured output) 스키마
+# 파싱 실패 차단
 _CATEGORY_SCHEMA = {
     "type": "object",
     "properties": {
@@ -159,11 +131,6 @@ _TRENDING_SCHEMA = {
 
 
 def summarize_category(client, model, category, articles):
-    """한 분야의 헤드라인 묶음을 Gemini로 요약한다.
-
-    반환: {"overview": str, "items": [str, ...]}
-    실패 시 원본 헤드라인을 items로 돌려주는 폴백을 사용한다.
-    """
     if not articles:
         return {"overview": f"{category} 분야에 수집된 기사가 없습니다.", "items": []}
 
@@ -217,12 +184,6 @@ def summarize_category(client, model, category, articles):
 
 
 def summarize_trending(client, model, articles):
-    """오늘 가장 화제인 이슈 하나를 뽑아 '무엇이·왜 화제인지' 요약한다.
-
-    반환: {"headline": str, "why": str} 또는 None(데이터 없음/실패).
-    실패해도 예외를 올리지 않는다 — 화제 배너는 '있으면 좋은' 부가 요소이므로
-    브리핑 본문 발송을 막지 않는다.
-    """
     if not articles:
         return None
 
@@ -413,16 +374,6 @@ def build_html(sections, now, trending=None):
 # ---------------------------------------------------------------------------
 
 def send_email(env, subject, html_body):
-    """Resend 공식 SDK로 HTML 메일을 발송한다.
-
-    MAIL_TO는 콤마로 구분된 여러 수신자를 지원한다.
-    단, Resend 도메인 인증 전(onboarding@resend.dev)에는
-    '가입한 Resend 계정 이메일' 한 곳으로만 발송되고 다른 주소는 거부된다.
-
-    발송 실패는 예외를 그대로 올려서 상위(main)에서 실패 종료하도록 둔다.
-    (stdlib urllib로 api.resend.com에 직접 POST하면 앞단 Cloudflare가 403 error 1010으로
-     막는 경우가 있어, 공식 SDK를 사용한다.)
-    """
     resend.api_key = env["RESEND_API_KEY"]
 
     recipients = [r.strip() for r in env["MAIL_TO"].split(",") if r.strip()]
@@ -435,15 +386,10 @@ def send_email(env, subject, html_body):
     })
 
     email_id = result.get("id") if isinstance(result, dict) else getattr(result, "id", "?")
-    # 수신자 주소는 찍지 않는다. public 저장소의 Actions 로그는 전체 공개이고,
-    # GitHub의 시크릿 마스킹은 시크릿 원문과 '정확히 일치'할 때만 동작한다.
-    # MAIL_TO가 여러 명이면 strip/join으로 원문과 달라져 마스킹을 뚫고 노출된다.
-    print(f"[OK] 발송 완료 (id={email_id}, 수신 {len(recipients)}명)")
+    print(f"[OK] 발송 완료 (id={email_id})")
 
 
-# ---------------------------------------------------------------------------
-# 6. 엔트리포인트
-# ---------------------------------------------------------------------------
+# 6. 실행
 
 def main():
     # 진행 상황을 콘솔에 단계별로 찍는다. flush=True로 즉시 출력해
@@ -469,7 +415,7 @@ def main():
     for idx, (category, url) in enumerate(CATEGORIES.items(), start=1):
         print(f"[{idx}/{total}] '{category}' 수집 중...", flush=True)
         articles = fetch_category(url, ITEMS_PER_CATEGORY)
-        print(f"[{idx}/{total}] '{category}' 기사 {len(articles)}건 → Gemini 요약 중...", flush=True)
+        print(f"[{idx}/{total}] '{category}' 기사 {len(articles)}건 Gemini 요약...", flush=True)
         summary = summarize_category(client, env["GEMINI_MODEL"], category, articles)
         sections.append({
             "category": category,
@@ -487,11 +433,10 @@ def main():
         top = next((a for a in trending_articles if a["link"]), None)
         trending["link"] = top["link"] if top else ""
 
-    # 전 분야 수집 0건 = 피드 차단/장애. 분야별 폴백이 전부 발동한 상황이라
-    # 빈 브리핑이 나간다. 그래도 Actions는 success로 끝나 장애를 덮는다.
-    # 발송 대신 실패 종료해서 빨간불로 알리게 한다.
+    # 전 분야 수집 0건 = 피드 차단/장애. 빈 브리핑을 보내면 Actions가 초록불로 끩어
+    # 장애를 놓친다. 발송 대신 실패 종료해서 빨간불로 알리게 한다.
     if not any(sec["articles"] for sec in sections):
-        print("[FATAL] 전 분야 기사 0건 — 발송 중단", file=sys.stderr)
+        print("[ERROR] 전 분야 기사 0건 — 발송 중단", file=sys.stderr)
         sys.exit(1)
 
     print("[조립] 이메일 본문 생성 중...", flush=True)
@@ -502,7 +447,7 @@ def main():
     try:
         send_email(env, subject, html_body)
     except Exception as e:
-        print(f"[FATAL] 이메일 발송 실패: {e}", file=sys.stderr)
+        print(f"[ERROR] 이메일 발송 실패: {e}", file=sys.stderr)
         sys.exit(1)
 
 

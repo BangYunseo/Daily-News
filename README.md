@@ -47,7 +47,7 @@ GitHub Actions (cron)
 - **도메인 인증 전(테스트 모드)** 에는 보내는 주소가 `onboarding@resend.dev` 로 고정되고,
   **가입한 Resend 계정 이메일 한 곳으로만** 발송된다. 이때 받는 주소(`MAIL_TO`)는 그 계정 이메일로 둔다.
 - 아무 주소(예: 별도 네이버)로 보내려면 Resend에서 **도메인 인증(DNS 레코드 추가)** 을 마친 뒤,
-  아래 `MAIL_FROM` 변수에 `news@내도메인.com` 형태로 넣는다.
+  `main.py`의 `MAIL_FROM` 고정값을 `news@내도메인.com` 형태로 바꾼다.
 
 ### 4) GitHub Secrets 등록  ← 민감정보는 전부 여기에만 넣는다
 저장소 > Settings > Secrets and variables > Actions > **New repository secret** 으로 아래 3개를 등록한다.
@@ -58,12 +58,12 @@ GitHub Actions (cron)
 | `RESEND_API_KEY` | 3)에서 발급한 Resend 키 (`re_...`) |
 | `MAIL_TO` | 받는 주소. 테스트 모드면 **Resend 계정 이메일** 한 곳. (도메인 인증 후엔 콤마로 여러 명 가능) |
 
-(선택) **Variables** 탭에 아래를 넣을 수 있다.
+Variables는 쓰지 않는다. 모델명과 보내는 주소는 `main.py`의 `load_env()`에 값으로 고정되어 있다.
 
-| 이름 | 값 |
-|------|-----|
-| `GEMINI_MODEL` | 특정 모델 고정용(예: `gemini-3.5-flash`). 없으면 코드 기본값 `gemini-3.1-flash-lite`(무료 티어 한도 넉넉). 목록: ai.google.dev/gemini-api/docs/models |
-| `MAIL_FROM` | 보내는 주소. 도메인 인증을 마쳤다면 `뉴스 브리핑 <news@내도메인.com>` 형태로. 없으면 `onboarding@resend.dev`. |
+| 값 | 위치 | 현재 |
+|------|-----|-----|
+| `GEMINI_MODEL` | `main.py` | `gemini-3.5-flash-lite` (무료 티어) |
+| `MAIL_FROM` | `main.py` | `뉴스 브리핑 <onboarding@resend.dev>` (Resend 도메인 미인증) |
 
 > **주의:** API 키·이메일 주소는 코드나 커밋에 절대 넣지 말고, 반드시 GitHub Secrets에만 저장한다. 어떤 챗봇/외부 도구에도 이 값들을 붙여넣지 않는다.
 
