@@ -77,6 +77,12 @@ def load_env():
 # 2. RSS 수집
 # ---------------------------------------------------------------------------
 
+# feedparser 기본 User-Agent("feedparser/6.x +https://github.com/...")로는
+# Google 뉴스가 GitHub Actions 러너 IP에 봇 차단 페이지(HTML)를 돌려줄 때가 있다.
+# 그러면 XML 파싱이 통째로 깨진다(2026-09-21 전 분야 0건 장애).
+_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+       "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+
 _TAG_RE = re.compile(r"<[^>]+>")
 
 
@@ -93,7 +99,7 @@ def fetch_category(url, limit):
     실패해도 예외를 던지지 않고 빈 리스트를 반환한다.
     한 분야 피드가 죽어도 나머지 분야는 계속 처리하기 위함이다.
     """
-    parsed = feedparser.parse(url)
+    parsed = feedparser.parse(url, agent=_UA)
 
     # bozo=1 이면서 항목도 없으면 파싱 실패로 간주한다.
     if parsed.bozo and not parsed.entries:
@@ -474,6 +480,13 @@ def main():
     if trending:
         top = next((a for a in trending_articles if a["link"]), None)
         trending["link"] = top["link"] if top else ""
+
+    # 전 분야 수집 0건 = 피드 차단/장애. 분야별 폴백이 전부 발동한 상황이라
+    # 빈 브리핑이 나간다. 그래도 Actions는 success로 끝나 장애를 덮는다.
+    # 발송 대신 실패 종료해서 빨간불로 알리게 한다.
+    if not any(sec["articles"] for sec in sections):
+        print("[FATAL] 전 분야 기사 0건 — 발송 중단", file=sys.stderr)
+        sys.exit(1)
 
     print("[조립] 이메일 본문 생성 중...", flush=True)
     html_body = build_html(sections, now, trending)
